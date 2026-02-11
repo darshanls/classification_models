@@ -2,7 +2,7 @@
 
 A machine learning project that implements **6 classification models** on the **Breast Cancer Wisconsin (Diagnostic)** dataset and provides an interactive **Streamlit web application** for model comparison, evaluation, and prediction.
 
-**Live App:** [Streamlit App Link](#) *(update after deployment)*
+**Live App:** [Streamlit App Link](https://ml-assignment-bits.streamlit.app/)
 
 ---
 
@@ -98,7 +98,7 @@ classification_models/
 
 ```bash
 # Clone the repository
-git clone https://github.com/<your-username>/classification_models.git
+git clone https://github.com/darshanls/classification_models.git
 cd classification_models
 
 # Install dependencies

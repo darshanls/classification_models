@@ -93,6 +93,99 @@ st.markdown("""
         border-radius: 8px 8px 0 0;
         padding: 8px 20px;
     }
+    
+    /* Model control panel title */
+    .panel-title {
+        font-size: 0.85rem;
+        font-weight: 600;
+        color: #667eea;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        margin-bottom: 0.5rem;
+    }
+    .model-card {
+        background: white;
+        border-radius: 12px;
+        padding: 0.9rem 1rem;
+        text-align: center;
+        border: 2px solid transparent;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        transition: all 0.25s ease;
+        cursor: default;
+    }
+    .model-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+    }
+    .model-card.active {
+        border-color: #667eea;
+        background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
+        box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+    }
+    .model-card .card-icon {
+        font-size: 1.6rem;
+        margin-bottom: 0.3rem;
+    }
+    .model-card .card-name {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #1e3a5f;
+        line-height: 1.2;
+        min-height: 2rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .model-card .card-acc {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #667eea;
+        margin-top: 0.2rem;
+    }
+    .model-card .card-acc-label {
+        font-size: 0.65rem;
+        color: #9ca3af;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+    .selected-model-banner {
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border-radius: 10px;
+        padding: 0.8rem 1.2rem;
+        margin-top: 1rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+    }
+    .selected-model-banner .banner-label {
+        font-size: 0.75rem;
+        opacity: 0.85;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    .selected-model-banner .banner-name {
+        font-size: 1.15rem;
+        font-weight: 700;
+    }
+    .selected-model-banner .banner-badge {
+        background: rgba(255,255,255,0.2);
+        border-radius: 20px;
+        padding: 0.3rem 0.8rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+    }
+    
+    /* Selectbox styling */
+    .stSelectbox > div[data-baseweb="select"] {
+        border-radius: 10px;
+        border: 2px solid #667eea;
+    }
+    .stSelectbox > div[data-baseweb="select"] > div {
+        background-color: #f8f9fa;
+        border-radius: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -341,11 +434,50 @@ st.markdown("---")
 # ════════════════════════════════════════════════════════════
 st.markdown('<div class="section-header">Select a Model to Analyze</div>', unsafe_allow_html=True)
 
-model_name = st.selectbox(
-    "Choose a classification model:",
-    list(results.keys()),
-    index=0
-)
+# ─── Model Selection Control Panel ───
+model_icons = {"Logistic Regression": "📈", "Decision Tree": "🌳",
+               "K-Nearest Neighbors (kNN)": "👥", "Naive Bayes (Gaussian)": "🎯",
+               "Random Forest (Ensemble)": "🌲", "XGBoost (Ensemble)": "⚡"}
+
+with st.container():
+    st.markdown('<div class="panel-title">🎛️ Model Control Panel</div>', unsafe_allow_html=True)
+
+    # Dropdown selector
+    model_name = st.selectbox(
+        "Choose a classification model:",
+        list(results.keys()),
+        index=0,
+        key="model_selector"
+    )
+
+    # Model preview cards row (rendered after selectbox so active state matches selection)
+    cards_html = '<div style="display:grid; grid-template-columns:repeat(6,1fr); gap:0.6rem; margin-top:0.5rem;">'
+    for name, res_item in results.items():
+        icon = model_icons.get(name, "🤖")
+        acc = res_item['metrics'].get('Accuracy', 0)
+        is_active = "active" if name == model_name else ""
+        cards_html += f"""
+        <div class="model-card {is_active}">
+            <div class="card-icon">{icon}</div>
+            <div class="card-name">{name.split('(')[0].strip()}</div>
+            <div class="card-acc">{acc:.2%}</div>
+            <div class="card-acc-label">Accuracy</div>
+        </div>"""
+    cards_html += '</div>'
+    st.markdown(cards_html, unsafe_allow_html=True)
+
+# Selected model banner
+sel_icon = model_icons.get(model_name, "🤖")
+sel_acc = results[model_name]['metrics'].get('Accuracy', 0)
+st.markdown(f"""
+<div class="selected-model-banner">
+    <div>
+        <div class="banner-label">Currently Analyzing</div>
+        <div class="banner-name">{sel_icon} {model_name}</div>
+    </div>
+    <div class="banner-badge">Accuracy: {sel_acc:.4f}</div>
+</div>
+""", unsafe_allow_html=True)
 
 res = results[model_name]
 metrics = res['metrics']
