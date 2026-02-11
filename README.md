@@ -113,15 +113,6 @@ streamlit run app.py
 
 ---
 
-## Deployment
-
-Deployed on **Streamlit Community Cloud**:
-1. Push code to GitHub
-2. Go to [streamlit.io/cloud](https://streamlit.io/cloud)
-3. Sign in with GitHub → New App → Select repository → Choose `app.py` → Deploy
-
----
-
 ## Technologies Used
 
 - **Python 3.11**
