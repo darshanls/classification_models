@@ -20,7 +20,7 @@ The goal is to compare model performance across multiple evaluation metrics and 
 |----------|---------|
 | **Name** | Breast Cancer Wisconsin (Diagnostic) |
 | **Source** | [UCI Machine Learning Repository](https://archive.ics.uci.edu/ml/datasets/Breast+Cancer+Wisconsin+(Diagnostic)) / sklearn |
-| **Instances** | 569 (426 train / 143 test) |
+| **Instances** | 569 (484 train / 85 test) |
 | **Features** | 30 (all numeric, real-valued) |
 | **Classes** | 2 — Malignant (212 samples, 37.3%) and Benign (357 samples, 62.7%) |
 | **Task** | Binary Classification |
@@ -32,7 +32,7 @@ The goal is to compare model performance across multiple evaluation metrics and 
 - **Worst features (10):** Largest/worst values of the above 10 measurements
 
 **Preprocessing:**
-- 75/25 stratified train-test split (426 training, 143 testing samples)
+- 85/15 stratified train-test split (484 training, 85 testing samples)
 - StandardScaler applied for feature normalization
 
 ---

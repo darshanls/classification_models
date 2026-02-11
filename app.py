@@ -258,7 +258,7 @@ with col_b:
     st.markdown(f"""
 - Malignant samples: **{(y == 0).sum()}** ({(y == 0).mean()*100:.1f}%)
 - Benign samples: **{(y == 1).sum()}** ({(y == 1).mean()*100:.1f}%)
-- Train/Test split: **75/25** (stratified)
+- Train/Test split: **85/15** (stratified)
 """)
 
 st.markdown('<div class="section-header">Models Implemented</div>', unsafe_allow_html=True)

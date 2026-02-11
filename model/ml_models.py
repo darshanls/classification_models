@@ -28,7 +28,7 @@ def load_dataset():
     return X, y, data.feature_names, data.target_names
 
 
-def preprocess_data(X, y, test_size=0.25, random_state=85):
+def preprocess_data(X, y, test_size=0.15, random_state=85):
     """Split and scale the data."""
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=test_size, random_state=random_state, stratify=y
