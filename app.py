@@ -33,16 +33,44 @@ st.markdown("""
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
+    /* ─── Keyframe Animations ─── */
+    @keyframes shimmer {
+        0% { background-position: -200% center; }
+        100% { background-position: 200% center; }
+    }
+    @keyframes fadeInUp {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes fadeInLeft {
+        from { opacity: 0; transform: translateX(-20px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes scaleIn {
+        from { opacity: 0; transform: scale(0.85); }
+        to { opacity: 1; transform: scale(1); }
+    }
+    @keyframes slideInRight {
+        from { opacity: 0; transform: translateX(40px); }
+        to { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes pulseGlow {
+        0%, 100% { box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3); }
+        50% { box-shadow: 0 4px 25px rgba(102, 126, 234, 0.5); }
+    }
+
     .main-title {
         font-size: 2.4rem !important;
         font-weight: 700 !important;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 50%, #667eea 100%) !important;
+        background-size: 200% auto !important;
         -webkit-background-clip: text !important;
         -webkit-text-fill-color: transparent !important;
         text-align: center !important;
         margin-bottom: 0.2rem !important;
         font-family: 'Inter', sans-serif !important;
         line-height: 1.2 !important;
+        animation: shimmer 3s ease-in-out infinite !important;
     }
     .sub-title {
         font-size: 1.05rem !important;
@@ -51,6 +79,7 @@ st.markdown("""
         margin-bottom: 2rem !important;
         font-family: 'Inter', sans-serif !important;
         line-height: 1.4 !important;
+        animation: fadeInUp 0.8s ease-out 0.3s both !important;
     }
     .metric-container {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -58,10 +87,12 @@ st.markdown("""
         padding: 1.2rem;
         text-align: center;
         box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-        transition: transform 0.2s;
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
+        animation: scaleIn 0.5s ease-out both;
     }
     .metric-container:hover {
-        transform: translateY(-2px);
+        transform: translateY(-4px);
+        box-shadow: 0 6px 16px rgba(0,0,0,0.12);
     }
     .metric-value {
         font-size: 1.8rem;
@@ -80,6 +111,7 @@ st.markdown("""
         border-left: 4px solid #667eea;
         padding-left: 12px;
         margin: 1.5rem 0 1rem 0;
+        animation: fadeInLeft 0.6s ease-out both;
     }
     .info-box {
         background-color: #f0f4ff;
@@ -112,17 +144,25 @@ st.markdown("""
         text-align: center;
         border: 2px solid transparent;
         box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        transition: all 0.25s ease;
+        transition: all 0.3s ease;
         cursor: default;
+        animation: scaleIn 0.5s ease-out both;
     }
+    .model-card:nth-child(1) { animation-delay: 0.05s; }
+    .model-card:nth-child(2) { animation-delay: 0.1s; }
+    .model-card:nth-child(3) { animation-delay: 0.15s; }
+    .model-card:nth-child(4) { animation-delay: 0.2s; }
+    .model-card:nth-child(5) { animation-delay: 0.25s; }
+    .model-card:nth-child(6) { animation-delay: 0.3s; }
     .model-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        transform: translateY(-4px) scale(1.03);
+        box-shadow: 0 6px 18px rgba(102, 126, 234, 0.2);
     }
     .model-card.active {
         border-color: #667eea;
         background: linear-gradient(135deg, #f0f4ff 0%, #e8edff 100%);
         box-shadow: 0 4px 16px rgba(102, 126, 234, 0.2);
+        animation: scaleIn 0.5s ease-out both, pulseGlow 2s ease-in-out infinite;
     }
     .model-card .card-icon {
         font-size: 1.6rem;
@@ -160,6 +200,7 @@ st.markdown("""
         align-items: center;
         justify-content: space-between;
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3);
+        animation: slideInRight 0.6s ease-out both;
     }
     .selected-model-banner .banner-label {
         font-size: 0.75rem;
@@ -192,23 +233,25 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─── Cache: Train models once ───
-@st.cache_data
+# ─── Cache: Train models once (using session_state to avoid inspect.getsource issues) ───
 def get_trained_results():
     """Train all models and cache results."""
-    X, y, feature_names, target_names = load_dataset()
-    X_train, X_test, y_train, y_test, scaler = preprocess_data(X, y)
-    results = train_and_evaluate_all(X_train, X_test, y_train, y_test)
-    return results, X_test, y_test, feature_names, target_names, scaler
+    if 'trained_results' not in st.session_state:
+        X, y, feature_names, target_names = load_dataset()
+        X_train, X_test, y_train, y_test, scaler = preprocess_data(X, y)
+        results = train_and_evaluate_all(X_train, X_test, y_train, y_test)
+        st.session_state.trained_results = (results, X_test, y_test, feature_names, target_names, scaler)
+    return st.session_state.trained_results
 
 
-@st.cache_data
-def get_comparison_df(_results):
+def get_comparison_df(results):
     """Build a comparison DataFrame from results."""
-    rows = []
-    for name, res in _results.items():
-        rows.append({'Model': name, **res['metrics']})
-    return pd.DataFrame(rows)
+    if 'comparison_df' not in st.session_state:
+        rows = []
+        for name, res in results.items():
+            rows.append({'Model': name, **res['metrics']})
+        st.session_state.comparison_df = pd.DataFrame(rows)
+    return st.session_state.comparison_df
 
 
 def render_metric_card(label, value, color="#667eea"):
