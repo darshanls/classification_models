@@ -34,21 +34,23 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
 
     .main-title {
-        font-size: 2.4rem;
-        font-weight: 700;
-        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
-        text-align: center;
-        margin-bottom: 0.2rem;
-        font-family: 'Inter', sans-serif;
+        font-size: 2.4rem !important;
+        font-weight: 700 !important;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%) !important;
+        -webkit-background-clip: text !important;
+        -webkit-text-fill-color: transparent !important;
+        text-align: center !important;
+        margin-bottom: 0.2rem !important;
+        font-family: 'Inter', sans-serif !important;
+        line-height: 1.2 !important;
     }
     .sub-title {
-        font-size: 1.05rem;
-        color: #6b7280;
-        text-align: center;
-        margin-bottom: 2rem;
-        font-family: 'Inter', sans-serif;
+        font-size: 1.05rem !important;
+        color: #6b7280 !important;
+        text-align: center !important;
+        margin-bottom: 2rem !important;
+        font-family: 'Inter', sans-serif !important;
+        line-height: 1.4 !important;
     }
     .metric-container {
         background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
@@ -334,7 +336,7 @@ with col_a:
         'Mean': [f"{X[f].mean():.3f}" for f in feature_names],
         'Std': [f"{X[f].std():.3f}" for f in feature_names],
     })
-    st.dataframe(feat_df, use_container_width=True, height=350)
+    st.dataframe(feat_df, width='stretch', height=350)
 with col_b:
     st.markdown("**Class Distribution:**")
     fig_cls, ax_cls = plt.subplots(figsize=(4, 3))
@@ -392,7 +394,7 @@ st.dataframe(
         'Precision': '{:.4f}', 'Recall': '{:.4f}',
         'F1 Score': '{:.4f}', 'MCC': '{:.4f}'
     }).background_gradient(cmap='Blues', subset=['Accuracy', 'AUC', 'Precision', 'Recall', 'F1 Score', 'MCC']),
-    use_container_width=True, hide_index=True
+    width='stretch', hide_index=True
 )
 
 # Bar chart comparison
@@ -564,7 +566,7 @@ if uploaded_file is not None:
 
         # Show uploaded data preview
         with st.expander("Preview Uploaded Data", expanded=True):
-            st.dataframe(df.head(10), use_container_width=True)
+            st.dataframe(df.head(10), width='stretch')
 
         # Check for target column
         has_target = 'target' in df.columns
@@ -605,7 +607,7 @@ if uploaded_file is not None:
 
             model = results[selected_model]['model']
 
-            if st.button("Run Predictions", type="primary", use_container_width=True):
+            if st.button("Run Predictions", type="primary", width='stretch'):
                 predictions = model.predict(X_upload_scaled)
                 pred_labels = ['Benign' if p == 1 else 'Malignant' for p in predictions]
 
@@ -619,7 +621,7 @@ if uploaded_file is not None:
                 col_res1, col_res2 = st.columns([2, 1])
                 with col_res1:
                     st.dataframe(result_df[['Prediction', 'Prediction Label']].head(20),
-                                 use_container_width=True)
+                                 width='stretch')
                 with col_res2:
                     pred_summary = pd.Series(pred_labels).value_counts()
                     fig_ps, ax_ps = plt.subplots(figsize=(4, 3))
@@ -660,7 +662,7 @@ if uploaded_file is not None:
                     data=csv_out,
                     file_name="predictions.csv",
                     mime="text/csv",
-                    use_container_width=True
+                    width='stretch'
                 )
 
     except Exception as e:
