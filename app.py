@@ -1,413 +1,548 @@
 """
-Wine Quality Classification - Streamlit Web Application
-A machine learning classification app demonstrating 6 different ML models.
+ML Classification Model Comparison Dashboard
+Dataset: Breast Cancer Wisconsin (Diagnostic) - UCI/sklearn
+Built with Streamlit | 6 Models x 6 Metrics
 """
 
 import streamlit as st
 import pandas as pd
 import numpy as np
-import pickle
-import os
-import plotly.express as px
-import plotly.figure_factory as ff
-from sklearn.metrics import (
-    accuracy_score, roc_auc_score, precision_score, 
-    recall_score, f1_score, matthews_corrcoef,
-    confusion_matrix, classification_report
-)
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')
+import seaborn as sns
+from sklearn.datasets import load_breast_cancer
+from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.linear_model import LogisticRegression
-from sklearn.tree import DecisionTreeClassifier
-from sklearn.neighbors import KNeighborsClassifier
-from sklearn.naive_bayes import GaussianNB
-from sklearn.ensemble import RandomForestClassifier
-from xgboost import XGBClassifier
-import warnings
-warnings.filterwarnings('ignore')
-
-# Page configuration
-st.set_page_config(
-    page_title="ML Classification App",
-    page_icon="🤖",
-    layout="wide",
-    initial_sidebar_state="expanded"
+from sklearn.metrics import confusion_matrix, classification_report, roc_curve, auc
+from model.ml_models import (
+    load_dataset, preprocess_data, get_models,
+    evaluate_model, train_and_evaluate_all
 )
 
-# Custom CSS for better styling
+# ─── Page Configuration ───
+st.set_page_config(
+    page_title="ML Classification Dashboard",
+    page_icon="🔬",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
+# ─── Custom CSS ───
 st.markdown("""
 <style>
-    .main-header {
-        font-size: 2.5rem;
-        font-weight: bold;
-        color: #1E88E5;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+    .main-title {
+        font-size: 2.4rem;
+        font-weight: 700;
+        background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
         text-align: center;
-        margin-bottom: 1rem;
+        margin-bottom: 0.2rem;
+        font-family: 'Inter', sans-serif;
     }
-    .sub-header {
-        font-size: 1.2rem;
-        color: #666;
+    .sub-title {
+        font-size: 1.05rem;
+        color: #6b7280;
         text-align: center;
         margin-bottom: 2rem;
+        font-family: 'Inter', sans-serif;
     }
-    .metric-card {
-        background-color: #f0f2f6;
-        padding: 1rem;
-        border-radius: 0.5rem;
+    .metric-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        border-radius: 12px;
+        padding: 1.2rem;
         text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        transition: transform 0.2s;
     }
-    .stMetric {
-        background-color: #f8f9fa;
-        padding: 10px;
-        border-radius: 5px;
+    .metric-container:hover {
+        transform: translateY(-2px);
+    }
+    .metric-value {
+        font-size: 1.8rem;
+        font-weight: 700;
+        color: #1e3a5f;
+    }
+    .metric-label {
+        font-size: 0.85rem;
+        color: #6b7280;
+        margin-top: 0.3rem;
+    }
+    .section-header {
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #1e3a5f;
+        border-left: 4px solid #667eea;
+        padding-left: 12px;
+        margin: 1.5rem 0 1rem 0;
+    }
+    .info-box {
+        background-color: #f0f4ff;
+        border: 1px solid #d0d9f5;
+        border-radius: 10px;
+        padding: 1rem 1.2rem;
+        margin: 0.5rem 0;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px 8px 0 0;
+        padding: 8px 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# Initialize session state
-if 'models_trained' not in st.session_state:
-    st.session_state.models_trained = False
-if 'models' not in st.session_state:
-    st.session_state.models = {}
-if 'scaler' not in st.session_state:
-    st.session_state.scaler = None
-if 'X_test' not in st.session_state:
-    st.session_state.X_test = None
-if 'y_test' not in st.session_state:
-    st.session_state.y_test = None
-if 'feature_names' not in st.session_state:
-    st.session_state.feature_names = None
 
-def clean_dataframe_for_arrow(df):
-    """Clean dataframe to avoid Arrow serialization issues"""
-    for col in df.columns:
-        # Convert object columns to numeric when possible
-        if df[col].dtype == 'object':
-            try:
-                df[col] = pd.to_numeric(df[col], errors='ignore')
-            except:
-                pass
-        
-        # Convert pandas nullable dtypes to standard dtypes
-        if hasattr(df[col].dtype, 'na_value'):
-            if df[col].dtype.name.startswith('float'):
-                df[col] = df[col].astype('float64')
-            elif df[col].dtype.name.startswith('int'):
-                df[col] = df[col].astype('int64')
-        
-        # Handle any remaining object columns by converting to string
-        if df[col].dtype == 'object':
-            # For categorical columns like 'type', convert to category then to string codes
-            if col == 'type' or df[col].nunique() < 10:
-                df[col] = df[col].astype('category').cat.codes
-            else:
-                df[col] = df[col].astype(str)
-    
-    return df
+# ─── Cache: Train models once ───
+@st.cache_data
+def get_trained_results():
+    """Train all models and cache results."""
+    X, y, feature_names, target_names = load_dataset()
+    X_train, X_test, y_train, y_test, scaler = preprocess_data(X, y)
+    results = train_and_evaluate_all(X_train, X_test, y_train, y_test)
+    return results, X_test, y_test, feature_names, target_names, scaler
 
-def load_sample_data():
-    """Load sample wine quality dataset"""
-    try:
-        red_wine_url = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-red.csv"
-        white_wine_url = "https://archive.ics.uci.edu/ml/machine-learning-databases/wine-quality/winequality-white.csv"
-        
-        red_wine = pd.read_csv(red_wine_url, sep=';')
-        white_wine = pd.read_csv(white_wine_url, sep=';')
-        
-        red_wine['wine_type'] = 0
-        white_wine['wine_type'] = 1
-        
-        wine_data = pd.concat([red_wine, white_wine], axis=0, ignore_index=True)
-        wine_data['quality_label'] = (wine_data['quality'] >= 6).astype(int)
-        
-        # Clean data to avoid Arrow serialization issues
-        wine_data = clean_dataframe_for_arrow(wine_data)
-        
-        return wine_data
-    except Exception as e:
-        st.error(f"Error loading sample data: {e}")
-        return None
 
-def train_models(X_train, X_test, y_train, y_test, scaler):
-    """Train all 6 classification models"""
-    models = {
-        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42),
-        'Decision Tree': DecisionTreeClassifier(random_state=42, max_depth=10),
-        'K-Nearest Neighbors': KNeighborsClassifier(n_neighbors=5),
-        'Naive Bayes': GaussianNB(),
-        'Random Forest': RandomForestClassifier(n_estimators=100, random_state=42, max_depth=10),
-        'XGBoost': XGBClassifier(n_estimators=100, random_state=42, max_depth=6, 
-                                  use_label_encoder=False, eval_metric='logloss')
-    }
-    
-    trained_models = {}
-    progress_bar = st.progress(0)
-    status_text = st.empty()
-    
-    for i, (name, model) in enumerate(models.items()):
-        status_text.text(f"Training {name}...")
-        model.fit(X_train, y_train)
-        trained_models[name] = model
-        progress_bar.progress((i + 1) / len(models))
-    
-    status_text.text("All models trained successfully!")
-    progress_bar.empty()
-    
-    return trained_models
+@st.cache_data
+def get_comparison_df(_results):
+    """Build a comparison DataFrame from results."""
+    rows = []
+    for name, res in _results.items():
+        rows.append({'Model': name, **res['metrics']})
+    return pd.DataFrame(rows)
 
-def calculate_metrics(y_true, y_pred, y_prob):
-    """Calculate all evaluation metrics"""
-    metrics = {
-        'Accuracy': accuracy_score(y_true, y_pred),
-        'AUC': roc_auc_score(y_true, y_prob),
-        'Precision': precision_score(y_true, y_pred, average='weighted'),
-        'Recall': recall_score(y_true, y_pred, average='weighted'),
-        'F1 Score': f1_score(y_true, y_pred, average='weighted'),
-        'MCC': matthews_corrcoef(y_true, y_pred)
-    }
-    return metrics
 
-def plot_confusion_matrix(y_true, y_pred, model_name):
-    """Create confusion matrix visualization"""
-    cm = confusion_matrix(y_true, y_pred)
-    
-    fig = px.imshow(
-        cm,
-        labels=dict(x="Predicted", y="Actual", color="Count"),
-        x=['Bad Wine (0)', 'Good Wine (1)'],
-        y=['Bad Wine (0)', 'Good Wine (1)'],
-        color_continuous_scale='Blues',
-        title=f'Confusion Matrix - {model_name}'
-    )
-    fig.update_layout(width=500, height=400)
-    
-    # Add text annotations
-    for i in range(len(cm)):
-        for j in range(len(cm[0])):
-            fig.add_annotation(
-                x=j, y=i,
-                text=str(cm[i][j]),
-                showarrow=False,
-                font=dict(color='white' if cm[i][j] > cm.max()/2 else 'black', size=16)
-            )
-    
-    return fig
-
-def main():
-    # Header
-    st.markdown('<p class="main-header">🍷 Wine Quality Classification</p>', unsafe_allow_html=True)
-    st.markdown('<p class="sub-header">Machine Learning Classification with 6 Different Models</p>', unsafe_allow_html=True)
-    
-    # Sidebar
-    st.sidebar.header("📊 Configuration")
-    
-    # Data source selection
-    data_source = st.sidebar.radio(
-        "Select Data Source:",
-        ["Use Sample Dataset", "Upload CSV File"]
-    )
-    
-    df = None
-    
-    if data_source == "Upload CSV File":
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("📁 Upload Test Data")
-        uploaded_file = st.sidebar.file_uploader(
-            "Upload your CSV file",
-            type=['csv'],
-            help="Upload a CSV file with the same features as the training data"
-        )
-        
-        if uploaded_file is not None:
-            try:
-                df = pd.read_csv(uploaded_file)
-                # Clean data to avoid Arrow serialization issues
-                df = clean_dataframe_for_arrow(df)
-                
-                st.sidebar.success(f"✅ File uploaded: {uploaded_file.name}")
-                st.sidebar.info(f"Shape: {df.shape[0]} rows × {df.shape[1]} columns")
-            except Exception as e:
-                st.sidebar.error(f"Error reading file: {e}")
+def render_metric_card(label, value, color="#667eea"):
+    """Render a styled metric card."""
+    if isinstance(value, float):
+        display = f"{value:.4f}"
     else:
-        with st.spinner("Loading sample Wine Quality dataset..."):
-            df = load_sample_data()
-        if df is not None:
-            st.sidebar.success("✅ Sample dataset loaded!")
-            st.sidebar.info(f"Shape: {df.shape[0]} rows × {df.shape[1]} columns")
-    
-    if df is not None:
-        # Display dataset info
-        st.header("📋 Dataset Overview")
-        
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Samples", df.shape[0])
-        with col2:
-            st.metric("Total Features", df.shape[1] - 1)
-        with col3:
-            if 'quality_label' in df.columns:
-                st.metric("Good Wine (1)", df['quality_label'].sum())
-        with col4:
-            if 'quality_label' in df.columns:
-                st.metric("Bad Wine (0)", len(df) - df['quality_label'].sum())
-        
-        # Show data preview
-        with st.expander("🔍 View Dataset Preview"):
-            st.dataframe(df.head(10),width="stretch")
-        
-        # Feature statistics
-        with st.expander("📊 Feature Statistics"):
-            st.dataframe(df.describe(), width="stretch")
-        
-        st.markdown("---")
-        
-        # Model Training Section
-        st.header("🎯 Model Training & Evaluation")
-        
-        # Prepare data
-        if 'quality_label' in df.columns:
-            feature_cols = [col for col in df.columns if col not in ['quality', 'quality_label']]
-            X = df[feature_cols]
-            y = df['quality_label']
-        else:
-            # For uploaded data, assume last column is target
-            feature_cols = df.columns[:-1].tolist()
-            X = df[feature_cols]
-            y = df.iloc[:, -1]
-        
-        # Train/Test Split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42, stratify=y
-        )
-        
-        # Scale features
-        scaler = StandardScaler()
-        X_train_scaled = scaler.fit_transform(X_train)
-        X_test_scaled = scaler.transform(X_test)
-        
-        # Train models button
-        if st.button("🚀 Train All Models", type="primary"):
-            st.session_state.models = train_models(X_train_scaled, X_test_scaled, y_train, y_test, scaler)
-            st.session_state.scaler = scaler
-            st.session_state.X_test = X_test_scaled
-            st.session_state.y_test = y_test
-            st.session_state.feature_names = feature_cols
-            st.session_state.models_trained = True
-            st.success("✅ All models trained successfully!")
-        
-        # Model Selection and Evaluation
-        if st.session_state.models_trained:
-            st.markdown("---")
-            st.header("📈 Model Evaluation")
-            
-            # Model selection dropdown
-            selected_model = st.selectbox(
-                "🔧 Select Model for Detailed Analysis:",
-                list(st.session_state.models.keys())
-            )
-            
-            # Get predictions for selected model
-            model = st.session_state.models[selected_model]
-            y_pred = model.predict(st.session_state.X_test)
-            y_prob = model.predict_proba(st.session_state.X_test)[:, 1]
-            
-            # Calculate metrics
-            metrics = calculate_metrics(st.session_state.y_test, y_pred, y_prob)
-            
-            # Display metrics in columns
-            st.subheader(f"📊 Evaluation Metrics - {selected_model}")
-            
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Accuracy", f"{metrics['Accuracy']:.4f}")
-                st.metric("AUC Score", f"{metrics['AUC']:.4f}")
-            with col2:
-                st.metric("Precision", f"{metrics['Precision']:.4f}")
-                st.metric("Recall", f"{metrics['Recall']:.4f}")
-            with col3:
-                st.metric("F1 Score", f"{metrics['F1 Score']:.4f}")
-                st.metric("MCC Score", f"{metrics['MCC']:.4f}")
-            
-            # Confusion Matrix and Classification Report
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("🔢 Confusion Matrix")
-                fig = plot_confusion_matrix(st.session_state.y_test, y_pred, selected_model)
-                st.plotly_chart(fig, width='stretch')
-            
-            with col2:
-                st.subheader("📋 Classification Report")
-                report = classification_report(st.session_state.y_test, y_pred, output_dict=True)
-                report_df = pd.DataFrame(report).transpose()
-                st.dataframe(report_df.style.format("{:.4f}"), width='stretch')
-            
-            # Model Comparison Table
-            st.markdown("---")
-            st.header("📊 Model Comparison Table")
-            
-            all_metrics = {}
-            for model_name, model in st.session_state.models.items():
-                y_pred_temp = model.predict(st.session_state.X_test)
-                y_prob_temp = model.predict_proba(st.session_state.X_test)[:, 1]
-                all_metrics[model_name] = calculate_metrics(st.session_state.y_test, y_pred_temp, y_prob_temp)
-            
-            comparison_df = pd.DataFrame(all_metrics).T
-            comparison_df = comparison_df.round(4)
-            
-            # Style the dataframe
-            st.dataframe(
-                comparison_df.style.highlight_max(axis=0, color='lightgreen'),
-                width='stretch'
-            )
-            
-            # Bar chart comparison
-            st.subheader("📈 Visual Comparison")
-            
-            metric_to_plot = st.selectbox(
-                "Select metric to visualize:",
-                ['Accuracy', 'AUC', 'Precision', 'Recall', 'F1 Score', 'MCC']
-            )
-            
-            fig = px.bar(
-                x=list(all_metrics.keys()),
-                y=[all_metrics[m][metric_to_plot] for m in all_metrics.keys()],
-                labels={'x': 'Model', 'y': metric_to_plot},
-                title=f'{metric_to_plot} Comparison Across Models',
-                color=[all_metrics[m][metric_to_plot] for m in all_metrics.keys()],
-                color_continuous_scale='Viridis'
-            )
-            fig.update_layout(showlegend=False)
-            st.plotly_chart(fig, width='stretch')
-            
-            # Model Observations
-            st.markdown("---")
-            st.header("📝 Model Observations")
-            
-            observations = {
-                'Logistic Regression': "Linear model that works well for linearly separable data. Fast training and interpretable coefficients. May underperform on complex non-linear relationships.",
-                'Decision Tree': "Non-linear model that captures complex patterns. Prone to overfitting without proper depth constraints. Easy to interpret and visualize.",
-                'K-Nearest Neighbors': "Instance-based learning that relies on distance metrics. Performance depends on k value and feature scaling. Can be slow for large datasets.",
-                'Naive Bayes': "Probabilistic classifier assuming feature independence. Fast and works well with high-dimensional data. May underperform when independence assumption is violated.",
-                'Random Forest': "Ensemble of decision trees that reduces overfitting. Robust and handles non-linear relationships well. Provides feature importance rankings.",
-                'XGBoost': "Gradient boosting algorithm with regularization. Often achieves state-of-the-art performance. Handles missing values and provides feature importance."
-            }
-            
-            for model_name in st.session_state.models.keys():
-                with st.expander(f"📌 {model_name}"):
-                    st.write(observations.get(model_name, "No observation available."))
-                    st.write(f"**Performance on this dataset:**")
-                    st.write(f"- Accuracy: {all_metrics[model_name]['Accuracy']:.4f}")
-                    st.write(f"- Best for: {'High accuracy' if all_metrics[model_name]['Accuracy'] == max([m['Accuracy'] for m in all_metrics.values()]) else 'Balanced performance'}")
-    
-    # Footer
-    st.markdown("---")
-    st.markdown("""
-    <div style='text-align: center; color: #666;'>
-        <p>🎓 Machine Learning Classification Assignment</p>
-        <p>Built with Streamlit | Scikit-learn | XGBoost</p>
+        display = str(value)
+    st.markdown(f"""
+    <div class="metric-container">
+        <div class="metric-value" style="color: {color};">{display}</div>
+        <div class="metric-label">{label}</div>
     </div>
     """, unsafe_allow_html=True)
 
-if __name__ == "__main__":
-    main()
+
+def plot_confusion_matrix(cm, title="Confusion Matrix"):
+    """Plot a styled confusion matrix."""
+    fig, ax = plt.subplots(figsize=(5, 4))
+    sns.heatmap(
+        cm, annot=True, fmt='d', cmap='Blues',
+        xticklabels=['Malignant', 'Benign'],
+        yticklabels=['Malignant', 'Benign'],
+        linewidths=0.5, linecolor='white',
+        annot_kws={"size": 14, "weight": "bold"},
+        ax=ax
+    )
+    ax.set_xlabel('Predicted Label', fontsize=11, fontweight='bold')
+    ax.set_ylabel('True Label', fontsize=11, fontweight='bold')
+    ax.set_title(title, fontsize=13, fontweight='bold', pad=12)
+    plt.tight_layout()
+    return fig
+
+
+def plot_roc_curves(results, X_test, y_test):
+    """Plot ROC curves for all models."""
+    fig, ax = plt.subplots(figsize=(8, 6))
+    colors = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140']
+
+    for i, (name, res) in enumerate(results.items()):
+        model = res['model']
+        if hasattr(model, 'predict_proba'):
+            y_prob = model.predict_proba(X_test)[:, 1]
+            fpr, tpr, _ = roc_curve(y_test, y_prob)
+            roc_auc = auc(fpr, tpr)
+            ax.plot(fpr, tpr, color=colors[i % len(colors)],
+                    lw=2, label=f'{name} (AUC={roc_auc:.3f})')
+
+    ax.plot([0, 1], [0, 1], 'k--', lw=1, alpha=0.5)
+    ax.set_xlim([0.0, 1.0])
+    ax.set_ylim([0.0, 1.05])
+    ax.set_xlabel('False Positive Rate', fontsize=11, fontweight='bold')
+    ax.set_ylabel('True Positive Rate', fontsize=11, fontweight='bold')
+    ax.set_title('ROC Curves — All Models', fontsize=13, fontweight='bold')
+    ax.legend(loc='lower right', fontsize=9)
+    ax.grid(True, alpha=0.3)
+    plt.tight_layout()
+    return fig
+
+
+def plot_metric_comparison(comp_df):
+    """Plot bar chart comparing all metrics across models."""
+    metrics_cols = ['Accuracy', 'AUC', 'Precision', 'Recall', 'F1 Score', 'MCC']
+    df_melted = comp_df.melt(id_vars='Model', value_vars=metrics_cols,
+                              var_name='Metric', value_name='Score')
+    df_melted['Score'] = pd.to_numeric(df_melted['Score'], errors='coerce')
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    palette = ['#667eea', '#f093fb', '#4facfe', '#43e97b', '#fa709a', '#fee140']
+    sns.barplot(data=df_melted, x='Metric', y='Score', hue='Model',
+                palette=palette, ax=ax, edgecolor='white')
+    ax.set_title('Model Performance Comparison', fontsize=14, fontweight='bold', pad=12)
+    ax.set_ylabel('Score', fontsize=11, fontweight='bold')
+    ax.set_xlabel('')
+    ax.set_ylim(0, 1.1)
+    ax.legend(bbox_to_anchor=(1.02, 1), loc='upper left', fontsize=8)
+    ax.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    return fig
+
+
+# ════════════════════════════════════════════════════════════
+#  MAIN APP — SINGLE PAGE LAYOUT
+# ════════════════════════════════════════════════════════════
+
+# Title
+st.markdown('<p class="main-title">🔬 ML Classification Model Comparison</p>', unsafe_allow_html=True)
+st.markdown('<p class="sub-title">Breast Cancer Wisconsin (Diagnostic) Dataset &nbsp;|&nbsp; 6 Models &times; 6 Metrics</p>', unsafe_allow_html=True)
+
+# Load trained results
+results, X_test, y_test, feature_names, target_names, scaler = get_trained_results()
+comp_df = get_comparison_df(results)
+
+
+# ════════════════════════════════════════════════════════════
+#  SECTION 1: OVERVIEW
+# ════════════════════════════════════════════════════════════
+st.markdown('<div class="section-header">Problem Statement</div>', unsafe_allow_html=True)
+st.markdown("""
+Breast cancer is one of the most common cancers worldwide. Early and accurate diagnosis
+is critical for effective treatment. This project applies **6 different machine learning
+classification models** to the Breast Cancer Wisconsin (Diagnostic) dataset to classify
+tumours as **Malignant** or **Benign** based on 30 numeric features derived from
+digitized images of fine needle aspirate (FNA) of breast masses.
+""")
+
+col1, col2, col3, col4 = st.columns(4)
+with col1:
+    render_metric_card("Features", 30, "#667eea")
+with col2:
+    render_metric_card("Instances", 569, "#764ba2")
+with col3:
+    render_metric_card("Models Trained", 6, "#4facfe")
+with col4:
+    render_metric_card("Metrics per Model", 6, "#43e97b")
+
+st.markdown('<div class="section-header">Dataset Description</div>', unsafe_allow_html=True)
+
+X, y, _, _ = load_dataset()
+col_a, col_b = st.columns([3, 2])
+with col_a:
+    st.markdown("**Feature List** (computed from cell nuclei images):")
+    feat_df = pd.DataFrame({
+        'Feature': list(feature_names),
+        'Mean': [f"{X[f].mean():.3f}" for f in feature_names],
+        'Std': [f"{X[f].std():.3f}" for f in feature_names],
+    })
+    st.dataframe(feat_df, use_container_width=True, height=350)
+with col_b:
+    st.markdown("**Class Distribution:**")
+    fig_cls, ax_cls = plt.subplots(figsize=(4, 3))
+    counts = y.value_counts()
+    colors_pie = ['#fa709a', '#43e97b']
+    ax_cls.pie(counts, labels=['Benign (1)', 'Malignant (0)'],
+                autopct='%1.1f%%', colors=colors_pie,
+                startangle=90, textprops={'fontsize': 10})
+    ax_cls.set_title('Target Distribution', fontsize=11, fontweight='bold')
+    plt.tight_layout()
+    st.pyplot(fig_cls)
+
+    st.markdown("**Quick Statistics:**")
+    st.markdown(f"""
+- Malignant samples: **{(y == 0).sum()}** ({(y == 0).mean()*100:.1f}%)
+- Benign samples: **{(y == 1).sum()}** ({(y == 1).mean()*100:.1f}%)
+- Train/Test split: **75/25** (stratified)
+""")
+
+st.markdown('<div class="section-header">Models Implemented</div>', unsafe_allow_html=True)
+model_info = {
+    "Logistic Regression": "A linear model that uses a logistic/sigmoid function to model binary outcomes. Fast, interpretable, and works well when features are roughly linearly separable.",
+    "Decision Tree": "A tree-based model that recursively partitions the feature space using axis-aligned splits. Highly interpretable but prone to overfitting.",
+    "K-Nearest Neighbors (kNN)": "An instance-based learner that classifies based on the majority vote of k closest training samples. Simple but sensitive to feature scaling.",
+    "Naive Bayes (Gaussian)": "A probabilistic model based on Bayes' theorem assuming feature independence. Very fast and works surprisingly well on many real-world problems.",
+    "Random Forest (Ensemble)": "An ensemble of decision trees trained on bootstrap samples with random feature selection. Reduces overfitting and improves generalization.",
+    "XGBoost (Ensemble)": "A gradient boosting framework that builds trees sequentially, each correcting the errors of its predecessor. State-of-the-art on many tabular datasets."
+}
+cols = st.columns(3)
+icons = ["📈", "🌳", "👥", "🎯", "🌲", "⚡"]
+for i, (name, desc) in enumerate(model_info.items()):
+    with cols[i % 3]:
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #f5f7fa 0%, #e8ecf4 100%);
+                    border-radius: 12px; padding: 1rem; margin-bottom: 1rem;
+                    min-height: 160px; box-shadow: 0 2px 6px rgba(0,0,0,0.06);">
+            <div style="font-size: 1.5rem; margin-bottom: 0.3rem;">{icons[i]}</div>
+            <div style="font-weight: 600; color: #1e3a5f; margin-bottom: 0.4rem;">{name}</div>
+            <div style="font-size: 0.85rem; color: #6b7280;">{desc}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+st.markdown("---")
+
+# ════════════════════════════════════════════════════════════
+#  SECTION 2: MODEL COMPARISON
+# ════════════════════════════════════════════════════════════
+st.markdown('<div class="section-header">Evaluation Metrics — All Models</div>', unsafe_allow_html=True)
+
+# Styled comparison table
+st.dataframe(
+    comp_df.style.format({
+        'Accuracy': '{:.4f}', 'AUC': '{:.4f}',
+        'Precision': '{:.4f}', 'Recall': '{:.4f}',
+        'F1 Score': '{:.4f}', 'MCC': '{:.4f}'
+    }).background_gradient(cmap='Blues', subset=['Accuracy', 'AUC', 'Precision', 'Recall', 'F1 Score', 'MCC']),
+    use_container_width=True, hide_index=True
+)
+
+# Bar chart comparison
+st.markdown('<div class="section-header">Visual Comparison</div>', unsafe_allow_html=True)
+fig_bar = plot_metric_comparison(comp_df)
+st.pyplot(fig_bar)
+
+# ROC Curves
+st.markdown('<div class="section-header">ROC Curves</div>', unsafe_allow_html=True)
+fig_roc = plot_roc_curves(results, X_test, y_test)
+st.pyplot(fig_roc)
+
+# Best model highlight
+st.markdown('<div class="section-header">Best Model per Metric</div>', unsafe_allow_html=True)
+best_cols = st.columns(6)
+metric_names = ['Accuracy', 'AUC', 'Precision', 'Recall', 'F1 Score', 'MCC']
+metric_colors = ['#667eea', '#764ba2', '#4facfe', '#43e97b', '#fa709a', '#fee140']
+for i, metric in enumerate(metric_names):
+    with best_cols[i]:
+        numeric_col = pd.to_numeric(comp_df[metric], errors='coerce')
+        best_idx = numeric_col.idxmax()
+        best_model = comp_df.loc[best_idx, 'Model']
+        best_val = numeric_col.max()
+        st.markdown(f"""
+        <div style="background: linear-gradient(135deg, #f5f7fa, #e8ecf4);
+                    border-radius: 10px; padding: 0.8rem; text-align: center;
+                    border-top: 3px solid {metric_colors[i]};">
+            <div style="font-size: 0.75rem; color: #9ca3af;">{metric}</div>
+            <div style="font-size: 1.3rem; font-weight: 700; color: #1e3a5f;">{best_val:.4f}</div>
+            <div style="font-size: 0.7rem; color: #6b7280; margin-top: 4px;">{best_model}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+
+st.markdown("---")
+
+# ════════════════════════════════════════════════════════════
+#  SECTION 3: INDIVIDUAL MODEL ANALYSIS
+# ════════════════════════════════════════════════════════════
+st.markdown('<div class="section-header">Select a Model to Analyze</div>', unsafe_allow_html=True)
+
+model_name = st.selectbox(
+    "Choose a classification model:",
+    list(results.keys()),
+    index=0
+)
+
+res = results[model_name]
+metrics = res['metrics']
+
+# Metric cards
+st.markdown(f'<div class="section-header">Metrics — {model_name}</div>', unsafe_allow_html=True)
+cols = st.columns(6)
+m_colors = ['#667eea', '#764ba2', '#4facfe', '#43e97b', '#fa709a', '#f6d365']
+for i, (key, val) in enumerate(metrics.items()):
+    with cols[i]:
+        render_metric_card(key, val, m_colors[i])
+
+st.markdown("")  # spacer
+
+# Confusion Matrix + Classification Report side by side
+col_cm, col_cr = st.columns([1, 1])
+
+with col_cm:
+    st.markdown(f'<div class="section-header">Confusion Matrix</div>', unsafe_allow_html=True)
+    fig_cm = plot_confusion_matrix(res['confusion_matrix'], title=model_name)
+    st.pyplot(fig_cm)
+
+with col_cr:
+    st.markdown(f'<div class="section-header">Classification Report</div>', unsafe_allow_html=True)
+    st.code(res['classification_report'], language='text')
+
+# Prediction distribution
+st.markdown('<div class="section-header">Prediction Distribution</div>', unsafe_allow_html=True)
+col_pred1, col_pred2 = st.columns(2)
+
+with col_pred1:
+    fig_dist, ax_dist = plt.subplots(figsize=(5, 3.5))
+    pred_counts = pd.Series(res['predictions']).value_counts().sort_index()
+    true_counts = pd.Series(np.array(y_test)).value_counts().sort_index()
+    x_pos = np.arange(2)
+    width = 0.35
+    ax_dist.bar(x_pos - width/2, true_counts.values, width, label='Actual', color='#667eea', alpha=0.8)
+    ax_dist.bar(x_pos + width/2, pred_counts.values, width, label='Predicted', color='#fa709a', alpha=0.8)
+    ax_dist.set_xticks(x_pos)
+    ax_dist.set_xticklabels(['Malignant', 'Benign'])
+    ax_dist.set_ylabel('Count', fontweight='bold')
+    ax_dist.set_title('Actual vs Predicted', fontsize=12, fontweight='bold')
+    ax_dist.legend()
+    ax_dist.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    st.pyplot(fig_dist)
+
+with col_pred2:
+    fig_err, ax_err = plt.subplots(figsize=(5, 3.5))
+    y_test_arr = np.array(y_test)
+    y_pred_arr = res['predictions']
+    correct = (y_test_arr == y_pred_arr).sum()
+    incorrect = (y_test_arr != y_pred_arr).sum()
+    ax_err.pie([correct, incorrect], labels=['Correct', 'Incorrect'],
+               autopct='%1.1f%%', colors=['#43e97b', '#fa709a'],
+               startangle=90, textprops={'fontsize': 11, 'fontweight': 'bold'})
+    ax_err.set_title('Prediction Accuracy', fontsize=12, fontweight='bold')
+    plt.tight_layout()
+    st.pyplot(fig_err)
+
+
+st.markdown("---")
+
+# ════════════════════════════════════════════════════════════
+#  SECTION 4: UPLOAD & PREDICT
+# ════════════════════════════════════════════════════════════
+st.markdown('<div class="section-header">Upload Test Data (CSV)</div>', unsafe_allow_html=True)
+st.markdown("""
+Upload a CSV file with the same 30 features as the Breast Cancer Wisconsin dataset.
+Optionally include a `target` column to evaluate model performance.
+A sample CSV file is available in the `data/` folder of the GitHub repository.
+""")
+
+uploaded_file = st.file_uploader(
+    "Choose a CSV file",
+    type=['csv'],
+    help="Upload test data with 30 numeric features. Include 'target' column for evaluation."
+)
+
+if uploaded_file is not None:
+    try:
+        df = pd.read_csv(uploaded_file)
+        st.success(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns")
+
+        # Show uploaded data preview
+        with st.expander("Preview Uploaded Data", expanded=True):
+            st.dataframe(df.head(10), use_container_width=True)
+
+        # Check for target column
+        has_target = 'target' in df.columns
+
+        # Prepare features
+        expected_features = list(feature_names)
+        feature_cols = [c for c in expected_features if c in df.columns]
+
+        if len(feature_cols) < len(expected_features):
+            missing = set(expected_features) - set(feature_cols)
+            st.warning(f"Missing features: {missing}. Using only {len(feature_cols)} available features.")
+
+        if len(feature_cols) == 0:
+            st.error("No matching features found. Please check your CSV columns match the expected feature names.")
+        else:
+            X_upload = df[feature_cols].values
+
+            # Handle missing expected features by filling with 0
+            if len(feature_cols) < len(expected_features):
+                full_X = np.zeros((X_upload.shape[0], len(expected_features)))
+                col_indices = [expected_features.index(c) for c in feature_cols]
+                for i, idx in enumerate(col_indices):
+                    full_X[:, idx] = X_upload[:, i]
+                X_upload = full_X
+
+            X_upload_scaled = scaler.transform(X_upload)
+
+            if has_target:
+                y_upload = df['target'].values
+
+            # Model selection
+            st.markdown('<div class="section-header">Select Model for Prediction</div>', unsafe_allow_html=True)
+            selected_model = st.selectbox(
+                "Choose model:",
+                list(results.keys()),
+                key="upload_model_select"
+            )
+
+            model = results[selected_model]['model']
+
+            if st.button("Run Predictions", type="primary", use_container_width=True):
+                predictions = model.predict(X_upload_scaled)
+                pred_labels = ['Benign' if p == 1 else 'Malignant' for p in predictions]
+
+                # Show predictions
+                st.markdown('<div class="section-header">Prediction Results</div>', unsafe_allow_html=True)
+
+                result_df = df.copy()
+                result_df['Prediction'] = predictions
+                result_df['Prediction Label'] = pred_labels
+
+                col_res1, col_res2 = st.columns([2, 1])
+                with col_res1:
+                    st.dataframe(result_df[['Prediction', 'Prediction Label']].head(20),
+                                 use_container_width=True)
+                with col_res2:
+                    pred_summary = pd.Series(pred_labels).value_counts()
+                    fig_ps, ax_ps = plt.subplots(figsize=(4, 3))
+                    ax_ps.pie(pred_summary.values, labels=pred_summary.index,
+                              autopct='%1.1f%%', colors=['#43e97b', '#fa709a'],
+                              startangle=90)
+                    ax_ps.set_title('Prediction Summary', fontsize=11, fontweight='bold')
+                    plt.tight_layout()
+                    st.pyplot(fig_ps)
+
+                # If target column exists, show evaluation
+                if has_target:
+                    st.markdown('<div class="section-header">Evaluation on Uploaded Data</div>', unsafe_allow_html=True)
+
+                    upload_metrics, upload_cm, upload_report, _ = evaluate_model(
+                        model, X_upload_scaled, y_upload
+                    )
+
+                    # Metric cards
+                    cols = st.columns(6)
+                    m_colors = ['#667eea', '#764ba2', '#4facfe', '#43e97b', '#fa709a', '#f6d365']
+                    for i, (key, val) in enumerate(upload_metrics.items()):
+                        with cols[i]:
+                            render_metric_card(key, val, m_colors[i])
+
+                    st.markdown("")
+                    col_u1, col_u2 = st.columns(2)
+                    with col_u1:
+                        fig_ucm = plot_confusion_matrix(upload_cm, title=f"{selected_model} — Uploaded Data")
+                        st.pyplot(fig_ucm)
+                    with col_u2:
+                        st.code(upload_report, language='text')
+
+                # Download predictions
+                csv_out = result_df.to_csv(index=False)
+                st.download_button(
+                    label="Download Predictions as CSV",
+                    data=csv_out,
+                    file_name="predictions.csv",
+                    mime="text/csv",
+                    use_container_width=True
+                )
+
+    except Exception as e:
+        st.error(f"Error processing file: {str(e)}")
+else:
+    st.info("Please upload a CSV file to get started. You can use `data/dataset_for_app.csv` from the repository.")
+
+
+# ─── Footer ───
+st.markdown("---")
+st.markdown(
+    "<div style='text-align: center; color: #9ca3af; font-size: 0.85rem;'>"
+    "ML Classification Dashboard &bull; Breast Cancer Wisconsin Dataset &bull; "
+    "Built with Streamlit, scikit-learn & XGBoost"
+    "</div>",
+    unsafe_allow_html=True
+)
