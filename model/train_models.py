@@ -11,7 +11,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import pandas as pd
 import numpy as np
-from model.ml_models import load_dataset, preprocess_data, train_and_evaluate_all
+from model.ml_models import load_dataset, preprocess_data, train_and_evaluate_all, save_trained_artifacts
 
 
 def main():
@@ -67,6 +67,10 @@ def main():
     app_df['target'] = y.values[:50]
     app_df.to_csv('data/dataset_for_app.csv', index=False)
     print("App test dataset saved to data/dataset_for_app.csv")
+
+    # Save models as pkl files
+    save_trained_artifacts(results, X_test, y_test, scaler)
+    print("Trained models saved to saved_models/ as .pkl files")
 
     # Print detailed classification reports
     for name, result in results.items():

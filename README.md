@@ -72,11 +72,21 @@ classification_models/
 │── README.md                 # Project documentation
 │── model/
 │   ├── __init__.py           # Package initializer
-│   ├── ml_models.py          # Core ML functions (training, evaluation)
-│   └── train_models.py       # Standalone training script
+│   ├── ml_models.py          # Core ML functions (training, evaluation, save/load)
+│   ├── cached.py             # Cached functions for Streamlit (auto-loads pkl)
+│   └── train_models.py       # Standalone training script (generates pkl files)
+│── saved_models/
+│   ├── logistic_regression.pkl
+│   ├── decision_tree.pkl
+│   ├── k-nearest_neighbors_knn.pkl
+│   ├── naive_bayes_gaussian.pkl
+│   ├── random_forest_ensemble.pkl
+│   ├── xgboost_ensemble.pkl
+│   ├── scaler.pkl            # Fitted StandardScaler
+│   └── artifacts.pkl         # Test data, metrics, confusion matrices, reports
 │── data/
 │   ├── model_comparison.csv  # Model comparison metrics
-│   ├── sample_dataset.csv    # Sample test dataset (114 instances)
+│   ├── sample_dataset.csv    # Sample test dataset
 │   └── dataset_for_app.csv   # Small dataset for app upload testing (50 instances)
 ```
 
@@ -104,7 +114,7 @@ cd classification_models
 # Install dependencies
 pip install -r requirements.txt
 
-# (Optional) Run training script to regenerate data files
+# (Optional) Run training script to regenerate pkl models and data files
 python -m model.train_models
 
 # Launch Streamlit app

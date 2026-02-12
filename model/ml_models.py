@@ -3,6 +3,8 @@ Core ML functions for training and evaluating classification models.
 Dataset: Breast Cancer Wisconsin (Diagnostic) - UCI/sklearn
 """
 
+import os
+import pickle
 import numpy as np
 import pandas as pd
 from sklearn.datasets import load_breast_cancer
@@ -99,3 +101,76 @@ def train_and_evaluate_all(X_train, X_test, y_train, y_test):
         }
 
     return results
+
+
+# ─── Model Persistence (pkl) ───
+
+MODELS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'saved_models')
+
+
+def save_trained_artifacts(results, X_test, y_test, scaler):
+    """Save trained models, scaler, and test data to pkl files."""
+    os.makedirs(MODELS_DIR, exist_ok=True)
+
+    # Save each model individually
+    for name, res in results.items():
+        safe_name = name.lower().replace(' ', '_').replace('(', '').replace(')', '')
+        filepath = os.path.join(MODELS_DIR, f'{safe_name}.pkl')
+        with open(filepath, 'wb') as f:
+            pickle.dump(res['model'], f)
+
+    # Save scaler
+    with open(os.path.join(MODELS_DIR, 'scaler.pkl'), 'wb') as f:
+        pickle.dump(scaler, f)
+
+    # Save test data and full results metadata (metrics, cm, report, predictions)
+    artifacts = {
+        'X_test': X_test,
+        'y_test': y_test,
+        'results_meta': {
+            name: {
+                'metrics': res['metrics'],
+                'confusion_matrix': res['confusion_matrix'],
+                'classification_report': res['classification_report'],
+                'predictions': res['predictions']
+            } for name, res in results.items()
+        }
+    }
+    with open(os.path.join(MODELS_DIR, 'artifacts.pkl'), 'wb') as f:
+        pickle.dump(artifacts, f)
+
+
+def load_trained_artifacts():
+    """Load trained models and artifacts from pkl files. Returns None if files missing."""
+    artifacts_path = os.path.join(MODELS_DIR, 'artifacts.pkl')
+    scaler_path = os.path.join(MODELS_DIR, 'scaler.pkl')
+
+    if not os.path.exists(artifacts_path) or not os.path.exists(scaler_path):
+        return None
+
+    # Load scaler
+    with open(scaler_path, 'rb') as f:
+        scaler = pickle.load(f)
+
+    # Load artifacts (test data + metrics)
+    with open(artifacts_path, 'rb') as f:
+        artifacts = pickle.load(f)
+
+    # Load each model and reconstruct full results dict
+    results = {}
+    for name, meta in artifacts['results_meta'].items():
+        safe_name = name.lower().replace(' ', '_').replace('(', '').replace(')', '')
+        model_path = os.path.join(MODELS_DIR, f'{safe_name}.pkl')
+        if not os.path.exists(model_path):
+            return None
+        with open(model_path, 'rb') as f:
+            model = pickle.load(f)
+        results[name] = {
+            'model': model,
+            'metrics': meta['metrics'],
+            'confusion_matrix': meta['confusion_matrix'],
+            'classification_report': meta['classification_report'],
+            'predictions': meta['predictions']
+        }
+
+    return results, artifacts['X_test'], artifacts['y_test'], scaler

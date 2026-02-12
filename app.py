@@ -19,6 +19,7 @@ from model.ml_models import (
     load_dataset, preprocess_data, get_models,
     evaluate_model, train_and_evaluate_all
 )
+from model.cached import get_trained_results, get_comparison_df
 
 # ─── Page Configuration ───
 st.set_page_config(
@@ -233,25 +234,8 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ─── Cache: Train models once (using session_state to avoid inspect.getsource issues) ───
-def get_trained_results():
-    """Train all models and cache results."""
-    if 'trained_results' not in st.session_state:
-        X, y, feature_names, target_names = load_dataset()
-        X_train, X_test, y_train, y_test, scaler = preprocess_data(X, y)
-        results = train_and_evaluate_all(X_train, X_test, y_train, y_test)
-        st.session_state.trained_results = (results, X_test, y_test, feature_names, target_names, scaler)
-    return st.session_state.trained_results
-
-
-def get_comparison_df(results):
-    """Build a comparison DataFrame from results."""
-    if 'comparison_df' not in st.session_state:
-        rows = []
-        for name, res in results.items():
-            rows.append({'Model': name, **res['metrics']})
-        st.session_state.comparison_df = pd.DataFrame(rows)
-    return st.session_state.comparison_df
+# ─── Cached functions imported from model/cached.py ───
+# (Separated to avoid inspect.getsource TokenError with complex CSS in this file)
 
 
 def render_metric_card(label, value, color="#667eea"):
