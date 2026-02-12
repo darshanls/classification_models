@@ -1,0 +1,7 @@
+Model,Accuracy,AUC,Precision,Recall,F1 Score,MCC
+Logistic Regression,0.9884,0.9942,0.9886,0.9884,0.9883,0.9753
+Decision Tree,0.9535,0.9502,0.9535,0.9535,0.9535,0.9005
+K-Nearest Neighbors (kNN),0.9884,0.9977,0.9886,0.9884,0.9883,0.9753
+Naive Bayes (Gaussian),0.9186,0.985,0.9183,0.9186,0.9183,0.825
+Random Forest (Ensemble),0.9186,0.9928,0.9222,0.9186,0.9193,0.8313
+XGBoost (Ensemble),0.9651,0.9965,0.9652,0.9651,0.965,0.9252

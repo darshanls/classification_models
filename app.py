@@ -4,6 +4,7 @@ Dataset: Breast Cancer Wisconsin (Diagnostic) - UCI/sklearn
 Built with Streamlit | 6 Models x 6 Metrics
 """
 
+import os
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -594,8 +595,19 @@ st.markdown('<div class="section-header">Upload Test Data (CSV)</div>', unsafe_a
 st.markdown("""
 Upload a CSV file with the same 30 features as the Breast Cancer Wisconsin dataset.
 Optionally include a `target` column to evaluate model performance.
-A sample CSV file is available in the `data/` folder of the GitHub repository.
 """)
+
+# Quick download link for sample test CSV
+sample_csv_path = os.path.join(os.path.dirname(__file__), 'data', 'dataset_for_app.csv')
+if os.path.exists(sample_csv_path):
+    with open(sample_csv_path, 'rb') as f:
+        sample_csv_bytes = f.read()
+    st.download_button(
+        label="⬇️ Download Sample Test CSV",
+        data=sample_csv_bytes,
+        file_name="dataset_for_app.csv",
+        mime="text/csv",
+    )
 
 uploaded_file = st.file_uploader(
     "Choose a CSV file",
