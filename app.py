@@ -191,6 +191,23 @@ st.markdown("""
         text-transform: uppercase;
         letter-spacing: 0.5px;
     }
+    /* Responsive model cards grid */
+    .model-cards-grid {
+        display: grid;
+        grid-template-columns: repeat(6, 1fr);
+        gap: 0.6rem;
+        margin-top: 0.5rem;
+    }
+    @media (max-width: 992px) {
+        .model-cards-grid {
+            grid-template-columns: repeat(3, 1fr);
+        }
+    }
+    @media (max-width: 576px) {
+        .model-cards-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
     .selected-model-banner {
         background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
         color: white;
@@ -480,7 +497,7 @@ with st.container():
     )
 
     # Model preview cards row (rendered after selectbox so active state matches selection)
-    cards_html = '<div style="display:grid; grid-template-columns:repeat(6,1fr); gap:0.6rem; margin-top:0.5rem;">'
+    cards_html = '<div class="model-cards-grid">'
     for name, res_item in results.items():
         icon = model_icons.get(name, "🤖")
         acc = res_item['metrics'].get('Accuracy', 0)
