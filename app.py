@@ -27,7 +27,7 @@ st.set_page_config(
     page_title="ML Classification Dashboard",
     page_icon="🔬",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 # ─── Custom CSS ───
@@ -348,6 +348,108 @@ results, X_test, y_test, feature_names, target_names, scaler = get_trained_resul
 comp_df = get_comparison_df(results)
 
 
+# ─── Sidebar: Data Upload ───
+with st.sidebar:
+    st.markdown("### 📂 Data Source")
+    st.markdown("**📤 Upload Custom Test Data**")
+    st.markdown(
+        "Upload a CSV with the same **30 features**. "
+        "Include a `target` column to evaluate all models on your data.\n\n"
+        "A sample file is also available in the GitHub **`data/`** folder."
+    )
+    sample_csv_path = os.path.join(os.path.dirname(__file__), 'data', 'dataset_for_app.csv')
+    if os.path.exists(sample_csv_path):
+        with open(sample_csv_path, 'rb') as f:
+            sample_csv_bytes = f.read()
+        st.download_button(
+            label="⬇️ Download Sample CSV",
+            data=sample_csv_bytes,
+            file_name="dataset_for_app.csv",
+            mime="text/csv",
+        )
+    uploaded_file = st.file_uploader(
+        "Choose a CSV file", type=['csv'],
+        help="30 numeric features. Include 'target' column for evaluation."
+    )
+    if uploaded_file is not None:
+        # Reset run state if a different file is uploaded
+        if st.session_state.get('_upload_name') != uploaded_file.name:
+            st.session_state['_upload_run'] = False
+            st.session_state['_upload_name'] = uploaded_file.name
+        st.markdown(
+            """<style>
+            div.stSidebar button[kind="secondary"] { background-color: #43e97b; color: #1e3a5f;
+            font-weight: 600; border: none; }
+            div.stSidebar button[kind="secondary"]:hover { background-color: #38d96e; }
+            </style>""", unsafe_allow_html=True
+        )
+        if st.button("▶️ Run Predictions", use_container_width=True):
+            st.session_state['_upload_run'] = True
+
+# ─── Determine Active Data Source ───
+active_results = results
+active_X_test = X_test
+active_y_test = y_test
+active_comp_df = comp_df
+data_mode = "default"
+upload_predictions = {}
+
+if uploaded_file is not None and st.session_state.get('_upload_run', False):
+    try:
+        df_upload = pd.read_csv(uploaded_file)
+        expected_features = list(feature_names)
+        feature_cols = [c for c in expected_features if c in df_upload.columns]
+
+        if len(feature_cols) == 0:
+            with st.sidebar:
+                st.error("No matching features found in uploaded CSV.")
+        else:
+            X_upload = df_upload[feature_cols]
+            if len(feature_cols) < len(expected_features):
+                X_upload = X_upload.reindex(columns=expected_features, fill_value=0)
+                with st.sidebar:
+                    st.warning(f"Missing {len(expected_features) - len(feature_cols)} features (filled with 0).")
+
+            X_upload_scaled = scaler.transform(X_upload)
+            has_target = 'target' in df_upload.columns
+
+            if has_target:
+                y_upload = df_upload['target'].values
+                upload_results = {}
+                for name, res_item in results.items():
+                    m = res_item['model']
+                    u_metrics, u_cm, u_report, u_pred = evaluate_model(m, X_upload_scaled, y_upload)
+                    upload_results[name] = {
+                        'model': m,
+                        'metrics': u_metrics,
+                        'confusion_matrix': u_cm,
+                        'classification_report': u_report,
+                        'predictions': u_pred
+                    }
+                active_results = upload_results
+                active_X_test = X_upload_scaled
+                active_y_test = y_upload
+                rows = []
+                for name, res in upload_results.items():
+                    rows.append({'Model': name, **res['metrics']})
+                active_comp_df = pd.DataFrame(rows)
+                data_mode = "uploaded"
+            else:
+                for name, res_item in results.items():
+                    m = res_item['model']
+                    upload_predictions[name] = m.predict(X_upload_scaled)
+                data_mode = "uploaded_no_target"
+
+            with st.sidebar:
+                st.success(f"✅ {df_upload.shape[0]} rows × {df_upload.shape[1]} cols")
+                with st.expander("Preview Uploaded Data", expanded=False):
+                    st.dataframe(df_upload.head(10))
+
+    except Exception as e:
+        with st.sidebar:
+            st.error(f"Error: {str(e)}")
+
+
 # ════════════════════════════════════════════════════════════
 #  SECTION 1: OVERVIEW
 # ════════════════════════════════════════════════════════════
@@ -427,6 +529,24 @@ for i, (name, desc) in enumerate(model_info.items()):
 
 st.markdown("---")
 
+# ─── Data Source Indicator ───
+if data_mode == "uploaded":
+    st.markdown("""
+    <div style="background: linear-gradient(90deg, #43e97b, #38f9d7); color: #1e3a5f;
+                border-radius: 10px; padding: 0.6rem 1.2rem; margin-bottom: 1rem;
+                font-weight: 600; text-align: center;">
+        📊 Showing results for <strong>Uploaded Data</strong> — all models re-evaluated
+    </div>
+    """, unsafe_allow_html=True)
+elif data_mode == "uploaded_no_target":
+    st.markdown("""
+    <div style="background: linear-gradient(90deg, #ffecd2, #fcb69f); color: #1e3a5f;
+                border-radius: 10px; padding: 0.6rem 1.2rem; margin-bottom: 1rem;
+                font-weight: 600; text-align: center;">
+        ⚠️ Uploaded data has no <code>target</code> column — showing default test metrics. Predictions available in model analysis below.
+    </div>
+    """, unsafe_allow_html=True)
+
 # ════════════════════════════════════════════════════════════
 #  SECTION 2: MODEL COMPARISON
 # ════════════════════════════════════════════════════════════
@@ -434,7 +554,7 @@ st.markdown('<div class="section-header">Evaluation Metrics — All Models</div>
 
 # Styled comparison table
 st.dataframe(
-    comp_df.style.format({
+    active_comp_df.style.format({
         'Accuracy': '{:.4f}', 'AUC': '{:.4f}',
         'Precision': '{:.4f}', 'Recall': '{:.4f}',
         'F1 Score': '{:.4f}', 'MCC': '{:.4f}'
@@ -444,13 +564,15 @@ st.dataframe(
 
 # Bar chart comparison
 st.markdown('<div class="section-header">Visual Comparison</div>', unsafe_allow_html=True)
-fig_bar = plot_metric_comparison(comp_df)
+fig_bar = plot_metric_comparison(active_comp_df)
 st.pyplot(fig_bar)
 
+
 # ROC Curves
-st.markdown('<div class="section-header">ROC Curves</div>', unsafe_allow_html=True)
-fig_roc = plot_roc_curves(results, X_test, y_test)
-st.pyplot(fig_roc)
+if data_mode != "uploaded_no_target":
+    st.markdown('<div class="section-header">ROC Curves</div>', unsafe_allow_html=True)
+    fig_roc = plot_roc_curves(active_results, active_X_test, active_y_test)
+    st.pyplot(fig_roc)
 
 # Best model highlight
 st.markdown('<div class="section-header">Best Model per Metric</div>', unsafe_allow_html=True)
@@ -459,9 +581,9 @@ metric_names = ['Accuracy', 'AUC', 'Precision', 'Recall', 'F1 Score', 'MCC']
 metric_colors = ['#667eea', '#764ba2', '#4facfe', '#43e97b', '#fa709a', '#fee140']
 for i, metric in enumerate(metric_names):
     with best_cols[i]:
-        numeric_col = pd.to_numeric(comp_df[metric], errors='coerce')
+        numeric_col = pd.to_numeric(active_comp_df[metric], errors='coerce')
         best_idx = numeric_col.idxmax()
-        best_model = comp_df.loc[best_idx, 'Model']
+        best_model = active_comp_df.loc[best_idx, 'Model']
         best_val = numeric_col.max()
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, #f5f7fa, #e8ecf4);
@@ -492,14 +614,14 @@ with st.container():
     # Dropdown selector
     model_name = st.selectbox(
         "Choose a classification model:",
-        list(results.keys()),
+        list(active_results.keys()),
         index=0,
         key="model_selector"
     )
 
     # Model preview cards row (rendered after selectbox so active state matches selection)
     cards_html = '<div class="model-cards-grid">'
-    for name, res_item in results.items():
+    for name, res_item in active_results.items():
         icon = model_icons.get(name, "🤖")
         acc = res_item['metrics'].get('Accuracy', 0)
         is_active = "active" if name == model_name else ""
@@ -515,7 +637,7 @@ with st.container():
 
 # Selected model banner
 sel_icon = model_icons.get(model_name, "🤖")
-sel_acc = results[model_name]['metrics'].get('Accuracy', 0)
+sel_acc = active_results[model_name]['metrics'].get('Accuracy', 0)
 st.markdown(f"""
 <div class="selected-model-banner">
     <div>
@@ -526,7 +648,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-res = results[model_name]
+res = active_results[model_name]
 metrics = res['metrics']
 
 # Metric cards
@@ -558,7 +680,7 @@ col_pred1, col_pred2 = st.columns(2)
 with col_pred1:
     fig_dist, ax_dist = plt.subplots(figsize=(5, 3.5))
     pred_counts = pd.Series(res['predictions']).value_counts().sort_index()
-    true_counts = pd.Series(np.array(y_test)).value_counts().sort_index()
+    true_counts = pd.Series(np.array(active_y_test)).value_counts().sort_index()
     x_pos = np.arange(2)
     width = 0.35
     ax_dist.bar(x_pos - width/2, true_counts.values, width, label='Actual', color='#667eea', alpha=0.8)
@@ -574,7 +696,7 @@ with col_pred1:
 
 with col_pred2:
     fig_err, ax_err = plt.subplots(figsize=(5, 3.5))
-    y_test_arr = np.array(y_test)
+    y_test_arr = np.array(active_y_test)
     y_pred_arr = res['predictions']
     correct = (y_test_arr == y_pred_arr).sum()
     incorrect = (y_test_arr != y_pred_arr).sum()
@@ -586,141 +708,32 @@ with col_pred2:
     st.pyplot(fig_err)
 
 
-st.markdown("---")
+# ─── Predictions on Uploaded Data (no target) ───
+if data_mode == "uploaded_no_target" and model_name in upload_predictions:
+    st.markdown("---")
+    st.markdown('<div class="section-header">Predictions on Uploaded Data</div>', unsafe_allow_html=True)
+    pred_vals = upload_predictions[model_name]
+    pred_labels = ['Benign' if p == 1 else 'Malignant' for p in pred_vals]
 
-# ════════════════════════════════════════════════════════════
-#  SECTION 4: UPLOAD & PREDICT
-# ════════════════════════════════════════════════════════════
-st.markdown('<div class="section-header">Upload Test Data (CSV)</div>', unsafe_allow_html=True)
-st.markdown("""
-Upload a CSV file with the same 30 features as the Breast Cancer Wisconsin dataset.
-Optionally include a `target` column to evaluate model performance.
-""")
+    col_pr1, col_pr2 = st.columns([2, 1])
+    with col_pr1:
+        pred_df = pd.DataFrame({
+            'Sample': range(1, len(pred_vals) + 1),
+            'Prediction': pred_vals,
+            'Label': pred_labels
+        })
+        st.dataframe(pred_df, width='stretch', hide_index=True)
+    with col_pr2:
+        pred_summary = pd.Series(pred_labels).value_counts()
+        fig_ps, ax_ps = plt.subplots(figsize=(4, 3))
+        ax_ps.pie(pred_summary.values, labels=pred_summary.index,
+                  autopct='%1.1f%%', colors=['#43e97b', '#fa709a'], startangle=90)
+        ax_ps.set_title('Prediction Summary', fontsize=11, fontweight='bold')
+        plt.tight_layout()
+        st.pyplot(fig_ps)
 
-# Quick download link for sample test CSV
-sample_csv_path = os.path.join(os.path.dirname(__file__), 'data', 'dataset_for_app.csv')
-if os.path.exists(sample_csv_path):
-    with open(sample_csv_path, 'rb') as f:
-        sample_csv_bytes = f.read()
-    st.download_button(
-        label="⬇️ Download Sample Test CSV",
-        data=sample_csv_bytes,
-        file_name="dataset_for_app.csv",
-        mime="text/csv",
-    )
-
-uploaded_file = st.file_uploader(
-    "Choose a CSV file",
-    type=['csv'],
-    help="Upload test data with 30 numeric features. Include 'target' column for evaluation."
-)
-
-if uploaded_file is not None:
-    try:
-        df = pd.read_csv(uploaded_file)
-        st.success(f"Loaded {df.shape[0]} rows and {df.shape[1]} columns")
-
-        # Show uploaded data preview
-        with st.expander("Preview Uploaded Data", expanded=True):
-            st.dataframe(df.head(10), width='stretch')
-
-        # Check for target column
-        has_target = 'target' in df.columns
-
-        # Prepare features
-        expected_features = list(feature_names)
-        feature_cols = [c for c in expected_features if c in df.columns]
-
-        if len(feature_cols) < len(expected_features):
-            missing = set(expected_features) - set(feature_cols)
-            st.warning(f"Missing features: {missing}. Using only {len(feature_cols)} available features.")
-
-        if len(feature_cols) == 0:
-            st.error("No matching features found. Please check your CSV columns match the expected feature names.")
-        else:
-            X_upload = df[feature_cols]
-
-            # Handle missing expected features by filling with 0
-            if len(feature_cols) < len(expected_features):
-                X_upload = X_upload.reindex(columns=expected_features, fill_value=0)
-
-            X_upload_scaled = scaler.transform(X_upload)
-
-            if has_target:
-                y_upload = df['target'].values
-
-            # Model selection
-            st.markdown('<div class="section-header">Select Model for Prediction</div>', unsafe_allow_html=True)
-            selected_model = st.selectbox(
-                "Choose model:",
-                list(results.keys()),
-                key="upload_model_select"
-            )
-
-            model = results[selected_model]['model']
-
-            if st.button("Run Predictions", type="primary", width='stretch'):
-                predictions = model.predict(X_upload_scaled)
-                pred_labels = ['Benign' if p == 1 else 'Malignant' for p in predictions]
-
-                # Show predictions
-                st.markdown('<div class="section-header">Prediction Results</div>', unsafe_allow_html=True)
-
-                result_df = df.copy()
-                result_df['Prediction'] = predictions
-                result_df['Prediction Label'] = pred_labels
-
-                col_res1, col_res2 = st.columns([2, 1])
-                with col_res1:
-                    st.dataframe(result_df[['Prediction', 'Prediction Label']].head(20),
-                                 width='stretch')
-                with col_res2:
-                    pred_summary = pd.Series(pred_labels).value_counts()
-                    fig_ps, ax_ps = plt.subplots(figsize=(4, 3))
-                    ax_ps.pie(pred_summary.values, labels=pred_summary.index,
-                              autopct='%1.1f%%', colors=['#43e97b', '#fa709a'],
-                              startangle=90)
-                    ax_ps.set_title('Prediction Summary', fontsize=11, fontweight='bold')
-                    plt.tight_layout()
-                    st.pyplot(fig_ps)
-
-                # If target column exists, show evaluation
-                if has_target:
-                    st.markdown('<div class="section-header">Evaluation on Uploaded Data</div>', unsafe_allow_html=True)
-
-                    upload_metrics, upload_cm, upload_report, _ = evaluate_model(
-                        model, X_upload_scaled, y_upload
-                    )
-
-                    # Metric cards
-                    cols = st.columns(6)
-                    m_colors = ['#667eea', '#764ba2', '#4facfe', '#43e97b', '#fa709a', '#f6d365']
-                    for i, (key, val) in enumerate(upload_metrics.items()):
-                        with cols[i]:
-                            render_metric_card(key, val, m_colors[i])
-
-                    st.markdown("")
-                    col_u1, col_u2 = st.columns(2)
-                    with col_u1:
-                        fig_ucm = plot_confusion_matrix(upload_cm, title=f"{selected_model} — Uploaded Data")
-                        st.pyplot(fig_ucm)
-                    with col_u2:
-                        st.code(upload_report, language='text')
-
-                # Download predictions
-                csv_out = result_df.to_csv(index=False)
-                st.download_button(
-                    label="Download Predictions as CSV",
-                    data=csv_out,
-                    file_name="predictions.csv",
-                    mime="text/csv",
-                    width='stretch'
-                )
-
-    except Exception as e:
-        st.error(f"Error processing file: {str(e)}")
-else:
-    st.info("Please upload a CSV file to get started. You can use `data/dataset_for_app.csv` from the repository.")
+    csv_out = pred_df.to_csv(index=False)
+    st.download_button("⬇️ Download Predictions CSV", csv_out, "predictions.csv", "text/csv")
 
 
 # ─── Footer ───
