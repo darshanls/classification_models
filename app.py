@@ -610,16 +610,20 @@ metric_colors = ['#667eea', '#764ba2', '#4facfe', '#43e97b', '#fa709a', '#fee140
 for i, metric in enumerate(metric_names):
     with best_cols[i]:
         numeric_col = pd.to_numeric(active_comp_df[metric], errors='coerce')
-        best_idx = numeric_col.idxmax()
-        best_model = active_comp_df.loc[best_idx, 'Model']
         best_val = numeric_col.max()
+        best_models = active_comp_df.loc[numeric_col == best_val, 'Model'].tolist()
+        best_model_items = "".join(
+            f'<div style="font-size: 0.7rem; color: #6b7280; margin-top: 2px;">&#8226; {m}</div>'
+            for m in best_models
+        )
+        best_model_lines = f'<div style="display: inline-block; text-align: left; margin-top: 4px;">{best_model_items}</div>'
         st.markdown(f"""
         <div style="background: linear-gradient(135deg, #f5f7fa, #e8ecf4);
                     border-radius: 10px; padding: 0.8rem; text-align: center;
                     border-top: 3px solid {metric_colors[i]};">
             <div style="font-size: 0.75rem; color: #9ca3af;">{metric}</div>
             <div style="font-size: 1.3rem; font-weight: 700; color: #1e3a5f;">{best_val:.4f}</div>
-            <div style="font-size: 0.7rem; color: #6b7280; margin-top: 4px;">{best_model}</div>
+            {best_model_lines}
         </div>
         """, unsafe_allow_html=True)
 
