@@ -398,6 +398,34 @@ if uploaded_file is not None and st.session_state.get('_upload_run', False):
     try:
         df_upload = pd.read_csv(uploaded_file)
         expected_features = list(feature_names)
+
+        # Auto-detect Kaggle-style column names (e.g. radius_mean → mean radius)
+        # and rename them to match sklearn's load_breast_cancer() feature names
+        if 'radius_mean' in df_upload.columns and 'mean radius' not in df_upload.columns:
+            kaggle_to_sklearn = {
+                'radius_mean': 'mean radius', 'texture_mean': 'mean texture',
+                'perimeter_mean': 'mean perimeter', 'area_mean': 'mean area',
+                'smoothness_mean': 'mean smoothness', 'compactness_mean': 'mean compactness',
+                'concavity_mean': 'mean concavity', 'concave points_mean': 'mean concave points',
+                'symmetry_mean': 'mean symmetry', 'fractal_dimension_mean': 'mean fractal dimension',
+                'radius_se': 'radius error', 'texture_se': 'texture error',
+                'perimeter_se': 'perimeter error', 'area_se': 'area error',
+                'smoothness_se': 'smoothness error', 'compactness_se': 'compactness error',
+                'concavity_se': 'concavity error', 'concave points_se': 'concave points error',
+                'symmetry_se': 'symmetry error', 'fractal_dimension_se': 'fractal dimension error',
+                'radius_worst': 'worst radius', 'texture_worst': 'worst texture',
+                'perimeter_worst': 'worst perimeter', 'area_worst': 'worst area',
+                'smoothness_worst': 'worst smoothness', 'compactness_worst': 'worst compactness',
+                'concavity_worst': 'worst concavity', 'concave points_worst': 'worst concave points',
+                'symmetry_worst': 'worst symmetry', 'fractal_dimension_worst': 'worst fractal dimension',
+            }
+            df_upload.rename(columns=kaggle_to_sklearn, inplace=True)
+
+        # Auto-convert Kaggle 'diagnosis' column (M/B) to numeric 'target' (0/1)
+        if 'diagnosis' in df_upload.columns and 'target' not in df_upload.columns:
+            df_upload['target'] = df_upload['diagnosis'].map({'M': 0, 'B': 1})
+            df_upload.drop(columns=['diagnosis'], inplace=True)
+
         feature_cols = [c for c in expected_features if c in df_upload.columns]
 
         if len(feature_cols) == 0:
